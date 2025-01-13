@@ -1,0 +1,1133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="LibEventCpp - A lightweight and portable C++14 event handling library">
+    <meta name="keywords" content="C++, event handling, signals slots, timers, file events, inotify">
+    <title>LibEventCpp - Event Handling Library for C++14</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary-color: #2c3e50;
+            --secondary-color: #3498db;
+            --accent-color: #e74c3c;
+            --bg-color: #ecf0f1;
+            --card-bg: #ffffff;
+            --text-color: #2c3e50;
+            --border-color: #bdc3c7;
+            --code-bg: #282c34;
+            --sidebar-width: 280px;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: var(--text-color);
+            background-color: var(--bg-color);
+        }
+
+        /* Header */
+        header {
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            color: white;
+            padding: 2rem 0;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+
+        .header-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem;
+        }
+
+        header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        header p {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+
+        .header-links {
+            margin-top: 1rem;
+        }
+
+        .header-links a {
+            color: white;
+            text-decoration: none;
+            margin-right: 1.5rem;
+            padding: 0.5rem 1rem;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 5px;
+            transition: background 0.3s;
+            display: inline-block;
+            margin-top: 0.5rem;
+        }
+
+        .header-links a:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        /* Layout */
+        .container {
+            display: flex;
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: var(--sidebar-width);
+            background: var(--card-bg);
+            padding: 2rem 1rem;
+            position: sticky;
+            top: 150px;
+            height: calc(100vh - 150px);
+            overflow-y: auto;
+            border-right: 1px solid var(--border-color);
+        }
+
+        .sidebar h3 {
+            color: var(--primary-color);
+            margin-bottom: 1rem;
+            font-size: 1.1rem;
+        }
+
+        .sidebar nav ul {
+            list-style: none;
+        }
+
+        .sidebar nav ul li {
+            margin-bottom: 0.5rem;
+        }
+
+        .sidebar nav ul ul {
+            margin-left: 1rem;
+            margin-top: 0.5rem;
+        }
+
+        .sidebar nav a {
+            color: var(--text-color);
+            text-decoration: none;
+            display: block;
+            padding: 0.5rem;
+            border-radius: 5px;
+            transition: all 0.3s;
+            font-size: 0.9rem;
+        }
+
+        .sidebar nav a:hover {
+            background: var(--bg-color);
+            color: var(--secondary-color);
+            padding-left: 1rem;
+        }
+
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            padding: 3rem;
+            max-width: calc(100% - var(--sidebar-width));
+        }
+
+        /* Sections */
+        section {
+            margin-bottom: 3rem;
+            scroll-margin-top: 160px;
+        }
+
+        section h2 {
+            color: var(--primary-color);
+            font-size: 2rem;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 3px solid var(--secondary-color);
+        }
+
+        section h3 {
+            color: var(--secondary-color);
+            font-size: 1.5rem;
+            margin-top: 2rem;
+            margin-bottom: 1rem;
+        }
+
+        section h4 {
+            color: var(--primary-color);
+            font-size: 1.2rem;
+            margin-top: 1.5rem;
+            margin-bottom: 0.8rem;
+        }
+
+        p {
+            margin-bottom: 1rem;
+        }
+
+        /* Code Blocks */
+        pre {
+            background: var(--code-bg);
+            padding: 1.5rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 1.5rem 0;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        code {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 0.9rem;
+        }
+
+        pre code {
+            color: #abb2bf;
+        }
+
+        p code, li code {
+            background: #f4f4f4;
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+            color: var(--accent-color);
+            font-size: 0.9em;
+        }
+
+        /* Lists */
+        ul, ol {
+            margin-left: 2rem;
+            margin-bottom: 1rem;
+        }
+
+        li {
+            margin-bottom: 0.5rem;
+        }
+
+        /* Cards/Boxes */
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin: 2rem 0;
+        }
+
+        .feature-card {
+            background: var(--card-bg);
+            padding: 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border-left: 4px solid var(--secondary-color);
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 5px 20px rgba(0,0,0,0.15);
+        }
+
+        .feature-card h4 {
+            margin-top: 0;
+            color: var(--secondary-color);
+        }
+
+        /* Pros and Cons */
+        .pros-cons {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            margin: 2rem 0;
+        }
+
+        .pros, .cons {
+            background: var(--card-bg);
+            padding: 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .pros {
+            border-left: 4px solid #27ae60;
+        }
+
+        .cons {
+            border-left: 4px solid var(--accent-color);
+        }
+
+        .pros h4 {
+            color: #27ae60;
+        }
+
+        .cons h4 {
+            color: var(--accent-color);
+        }
+
+        /* Badges */
+        .badge {
+            display: inline-block;
+            padding: 0.3rem 0.8rem;
+            background: var(--secondary-color);
+            color: white;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            margin-right: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        /* Footer */
+        footer {
+            background: var(--primary-color);
+            color: white;
+            text-align: center;
+            padding: 2rem;
+            margin-top: 3rem;
+        }
+
+        footer a {
+            color: var(--secondary-color);
+            text-decoration: none;
+        }
+
+        footer a:hover {
+            text-decoration: underline;
+        }
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .container {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                position: static;
+                height: auto;
+                border-right: none;
+                border-bottom: 1px solid var(--border-color);
+            }
+
+            .main-content {
+                max-width: 100%;
+                padding: 2rem;
+            }
+
+            .pros-cons {
+                grid-template-columns: 1fr;
+            }
+
+            header h1 {
+                font-size: 2rem;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                padding: 1.5rem;
+            }
+
+            section h2 {
+                font-size: 1.5rem;
+            }
+
+            .feature-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Scroll to top button */
+        .scroll-top {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            background: var(--secondary-color);
+            color: white;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            transition: all 0.3s;
+            opacity: 0;
+            visibility: hidden;
+        }
+
+        .scroll-top.visible {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .scroll-top:hover {
+            background: var(--primary-color);
+            transform: translateY(-5px);
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="header-content">
+            <h1>🚀 LibEventCpp</h1>
+            <p>A lightweight and portable C++14 event handling library</p>
+            <div class="header-links">
+                <a href="https://github.com/nguyenchiemminhvu/LibEventCpp" target="_blank">📦 GitHub</a>
+                <a href="https://github.com/nguyenchiemminhvu/LibEventCpp/blob/main/LICENSE" target="_blank">📄 MIT License</a>
+                <a href="#usage">📖 Documentation</a>
+            </div>
+        </div>
+    </header>
+
+    <div class="container">
+        <aside class="sidebar">
+            <h3>📑 Contents</h3>
+            <nav>
+                <ul>
+                    <li><a href="#introduction">Introduction</a></li>
+                    <li><a href="#features">Features</a></li>
+                    <li><a href="#compilers">Supported Compilers</a></li>
+                    <li><a href="#environment">Support Environment</a></li>
+                    <li><a href="#usage">Usage</a>
+                        <ul>
+                            <li><a href="#message-handler">Message Event Handler</a></li>
+                            <li><a href="#signals-slots">Signals and Slots</a></li>
+                            <li><a href="#time-events">Time Events</a></li>
+                            <li><a href="#once-events">Once Events</a></li>
+                            <li><a href="#toggle-events">Toggle Events</a></li>
+                            <li><a href="#fd-events">File Descriptor Events</a></li>
+                            <li><a href="#signal-events">Signal Events</a></li>
+                            <li><a href="#fs-events">File System Events</a></li>
+                        </ul>
+                    </li>
+                    <li><a href="#pros-cons">Pros and Cons</a></li>
+                    <li><a href="#references">References</a></li>
+                </ul>
+            </nav>
+        </aside>
+
+        <main class="main-content">
+            <section id="introduction">
+                <h2>Introduction</h2>
+                <p><strong>LibEventCpp</strong> is a lightweight and portable <code>C++14</code> library designed for handling events efficiently. It is implemented in a single header file, making it easy to integrate into projects. The library supports an unlimited number of arguments for event handlers, providing flexibility in event management. LibEventCpp is designed to be simple to use while offering powerful features for event-driven programming.</p>
+                
+                <div style="background: #fff3cd; padding: 1rem; border-left: 4px solid #ffc107; border-radius: 5px; margin: 1.5rem 0;">
+                    <strong>📜 License:</strong> MIT License
+                </div>
+            </section>
+
+            <section id="features">
+                <h2>Key Features</h2>
+                <div class="feature-grid">
+                    <div class="feature-card">
+                        <h4>📨 Message Event Handler</h4>
+                        <p>Asynchronous event processing with delayed and repeated messages support</p>
+                    </div>
+                    <div class="feature-card">
+                        <h4>🔗 Signals and Slots</h4>
+                        <p>Qt-style signal-slot connections for decoupled communication</p>
+                    </div>
+                    <div class="feature-card">
+                        <h4>⏰ Time Events</h4>
+                        <p>Thread-safe timers with one-shot and periodic modes</p>
+                    </div>
+                    <div class="feature-card">
+                        <h4>🎯 Once Events</h4>
+                        <p>Control function execution based on various conditions</p>
+                    </div>
+                    <div class="feature-card">
+                        <h4>🔄 Toggle Events</h4>
+                        <p>State-based event triggering with thread synchronization</p>
+                    </div>
+                    <div class="feature-card">
+                        <h4>📁 File Descriptor Events</h4>
+                        <p>Monitor multiple file descriptors with poll-based I/O</p>
+                    </div>
+                    <div class="feature-card">
+                        <h4>📡 Signal Events</h4>
+                        <p>Clean wrapper around POSIX signal handling</p>
+                    </div>
+                    <div class="feature-card">
+                        <h4>📂 File System Events</h4>
+                        <p>Efficient file system monitoring using inotify (Linux)</p>
+                    </div>
+                </div>
+            </section>
+
+            <section id="compilers">
+                <h2>Supported Compilers</h2>
+                <div style="background: var(--card-bg); padding: 1.5rem; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                    <p>LibEventCpp requires C++14 support. Compatible compilers include:</p>
+                    <ul>
+                        <li><strong>GCC (GNU Compiler Collection):</strong> Version 5.0 and later</li>
+                        <li><strong>Clang:</strong> Version 3.4 and later</li>
+                    </ul>
+                    <p><strong>Compiler flags:</strong></p>
+                    <ul>
+                        <li><strong>GCC/Clang:</strong> <code>-std=c++14</code></li>
+                    </ul>
+                </div>
+            </section>
+
+            <section id="environment">
+                <h2>Support Environment</h2>
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.2);">
+                    <h3 style="color: white; margin-top: 0;">Linux-based for Automotive</h3>
+                    <p style="font-size: 1.1rem; line-height: 1.8;">
+                        <strong>LibEventCpp</strong> primarily supports <strong>Linux</strong> environments, making it highly suitable for most automotive projects where Linux-based embedded systems are commonly used. The library leverages POSIX APIs for features such as timers, signals, file descriptors, and file system monitoring, ensuring optimal performance and integration in Linux-based automotive ECUs and embedded platforms.
+                    </p>
+                    <div style="margin-top: 1.5rem; padding: 1rem; background: rgba(255,255,255,0.1); border-radius: 5px; border-left: 4px solid #ffd700;">
+                        <strong>🚗 Perfect for:</strong>
+                        <ul style="margin-top: 0.5rem; margin-left: 1.5rem;">
+                            <li>Automotive ECU development</li>
+                            <li>Linux-based embedded systems</li>
+                            <li>Real-time automotive applications</li>
+                            <li>POSIX-compliant platforms</li>
+                        </ul>
+                    </div>
+                    </p>
+                </div>
+            </section>
+
+            <section id="usage">
+                <h2>Usage Guide</h2>
+
+                <article id="message-handler">
+                    <h3>📨 Message Event Handler</h3>
+                    <p>Create event handlers by deriving from <code>event_handler::event_handler</code>. The base class uses an event looper to continuously and asynchronously poll and execute messages from an event queue.</p>
+
+                    <h4>Basic Example</h4>
+                    <pre><code class="language-cpp">#include "libevent.h"
+
+class TestHandler : public event_handler::event_handler
+{
+public:
+    TestHandler() : event_handler::event_handler() {}
+
+    void print_message(std::string s)
+    {
+        std::cout &lt;&lt; s &lt;&lt; std::endl;
+    }
+
+    void do_heavy_work(int ith)
+    {
+        for (int i = 0; i &lt; 1000; i++)
+        {
+            // do something
+            int val = i &amp; 1;
+        }
+        std::cout &lt;&lt; "Done work #" &lt;&lt; ith &lt;&lt; std::endl;
+    }
+
+    void tick()
+    {
+        std::cout &lt;&lt; "Tick every 1 second..." &lt;&lt; std::endl;
+        this-&gt;post_delayed_event(1000U, &amp;TestHandler::tick);
+    }
+};
+
+// Usage
+std::shared_ptr&lt;TestHandler&gt; handler = std::make_shared&lt;TestHandler&gt;();
+
+// Post delayed message (2 seconds)
+handler-&gt;post_delayed_event(2000U, &amp;TestHandler::print_message, 
+                             std::string("Delayed message"));
+
+// Post regular message
+handler-&gt;post_event(&amp;TestHandler::print_message, 
+                    std::string("Hello event handler"));
+
+// Post repeated message (5 times, every 1 second)
+handler-&gt;post_repeated_event(5, 1000U, &amp;TestHandler::repated_work);</code></pre>
+                </article>
+
+                <article id="signals-slots">
+                    <h3>🔗 Signals and Slots</h3>
+                    <p>Qt-style signal-slot mechanism for decoupled communication between objects.</p>
+
+                    <h4>Basic Example</h4>
+                    <pre><code class="language-cpp">#include "libevent.h"
+
+// Signal sender
+class Sender
+{
+public:
+    sigslot::signal&lt;std::string&gt; message_notification;
+
+    void boardcast_message(std::string mess)
+    {
+        message_notification(mess);
+    }
+};
+
+// Signal receiver
+class Listener : public sigslot::base_slot
+{
+public:
+    void on_boardcast_received(std::string mess)
+    {
+        std::cout &lt;&lt; "Received: " &lt;&lt; mess &lt;&lt; std::endl;
+    }
+};
+
+// Usage
+Sender sender;
+Listener listener;
+
+// Connect signal to slot
+sender.message_notification.connect(&amp;listener, &amp;Listener::on_boardcast_received);
+
+// Emit signal
+sender.boardcast_message("Hello from Sender");
+
+// Disconnect
+sender.message_notification.disconnect(&amp;listener);</code></pre>
+
+                    <h4>Lambda Connections</h4>
+                    <pre><code class="language-cpp">sigslot::signal&lt;&gt; test_sig_lambda;
+test_sig_lambda.connect([]() {
+    std::cout &lt;&lt; "Lambda activated" &lt;&lt; std::endl;
+});
+test_sig_lambda();
+test_sig_lambda.disconnect_all_callable();</code></pre>
+                </article>
+
+                <article id="time-events">
+                    <h3>⏰ Time Events</h3>
+                    <p>Thread-safe timer mechanism using POSIX APIs. Supports one-shot and periodic timers.</p>
+
+                    <h4>Example</h4>
+                    <pre><code class="language-cpp">#include "libevent.h"
+
+time_event::timer my_timer;
+
+// Set duration
+my_timer.set_duration(1000); // 1 second
+
+// Add callback
+my_timer.add_callback([]() {
+    std::cout &lt;&lt; "Timer expired!" &lt;&lt; std::endl;
+});
+
+// Start timer
+try {
+    my_timer.start(5);  // repeat 5 times
+    // my_timer.start(0);  // one-shot
+    // my_timer.start();   // repeat forever
+}
+catch (const std::runtime_error&amp; e) {
+    std::cerr &lt;&lt; "Timer error: " &lt;&lt; e.what() &lt;&lt; std::endl;
+}
+
+// Stop timer
+my_timer.stop();</code></pre>
+                </article>
+
+                <article id="once-events">
+                    <h3>🎯 Once Events</h3>
+                    <p>Control function execution based on various conditions like call count, value changes, or time intervals.</p>
+
+                    <h4>once_per_life</h4>
+                    <pre><code class="language-cpp">once_event::once_per_life init_flag;
+
+// Called only once
+init_flag.call_once([]() {
+    std::cout &lt;&lt; "Initialize resources" &lt;&lt; std::endl;
+});</code></pre>
+
+                    <h4>once_per_n_times</h4>
+                    <pre><code class="language-cpp">once_event::once_per_n_times every_third(3);
+
+for (int i = 1; i &lt;= 10; ++i) {
+    // Executed on calls 3, 6, 9
+    every_third.call_if_due([]() {
+        std::cout &lt;&lt; "Executed!" &lt;&lt; std::endl;
+    });
+}</code></pre>
+
+                    <h4>once_per_value</h4>
+                    <pre><code class="language-cpp">once_event::once_per_value&lt;int&gt; value_monitor;
+
+value_monitor.on_value_change(5, [](int val) {
+    std::cout &lt;&lt; "New value: " &lt;&lt; val &lt;&lt; std::endl;
+}); // Prints: New value: 5
+
+value_monitor.on_value_change(5, [](int val) {
+    std::cout &lt;&lt; "New value: " &lt;&lt; val &lt;&lt; std::endl;
+}); // Does nothing (unchanged)</code></pre>
+
+                    <h4>once_per_interval</h4>
+                    <pre><code class="language-cpp">once_event::once_per_interval rate_limiter(1000); // 1 second
+
+bool executed = rate_limiter.call([]() {
+    std::cout &lt;&lt; "Rate-limited action" &lt;&lt; std::endl;
+});</code></pre>
+                </article>
+
+                <article id="toggle-events">
+                    <h3>🔄 Toggle Events</h3>
+                    <p>Synchronization mechanism that triggers a callback only once when a condition becomes true.</p>
+
+                    <h4>Basic Usage</h4>
+                    <pre><code class="language-cpp">toggle_event::toggle_event toggle;
+
+// Trigger once
+toggle.trigger_if_not_set([]() {
+    std::cout &lt;&lt; "Event triggered!" &lt;&lt; std::endl;
+}); // Prints
+
+// Subsequent calls ignored
+toggle.trigger_if_not_set([]() {
+    std::cout &lt;&lt; "Won't print" &lt;&lt; std::endl;
+}); // Does nothing
+
+// Reset and trigger again
+toggle.reset();
+toggle.trigger_if_not_set([]() {
+    std::cout &lt;&lt; "Triggered again!" &lt;&lt; std::endl;
+});</code></pre>
+
+                    <h4>Blocking Wait</h4>
+                    <pre><code class="language-cpp">toggle_event::toggle_event event;
+
+// Wait for event (blocking)
+std::thread waiter([&amp;event]() {
+    event.wait(); // Blocks until triggered
+    std::cout &lt;&lt; "Event received!" &lt;&lt; std::endl;
+});
+
+// Trigger from another thread
+std::this_thread::sleep_for(std::chrono::seconds(2));
+event.trigger_if_not_set([]() {
+    std::cout &lt;&lt; "Triggering event" &lt;&lt; std::endl;
+});</code></pre>
+
+                    <h4>Wait with Timeout</h4>
+                    <pre><code class="language-cpp">toggle_event::toggle_event event;
+
+bool result = event.wait_for(2000); // 2 second timeout
+if (result) {
+    std::cout &lt;&lt; "Event triggered" &lt;&lt; std::endl;
+} else {
+    std::cout &lt;&lt; "Timeout" &lt;&lt; std::endl;
+}</code></pre>
+                </article>
+
+                <article id="fd-events">
+                    <h3>📁 File Descriptor Events</h3>
+                    <p>Monitor multiple file descriptors using poll-based I/O with event-driven callbacks.</p>
+
+                    <h4>Basic Example</h4>
+                    <pre><code class="language-cpp">#include "libevent.h"
+
+fd_event::fd_event_manager manager;
+
+// Add file descriptor with callback
+manager.add_fd(
+    socket_fd,
+    static_cast&lt;short&gt;(fd_event::event_type::READ),
+    [](int fd, short revents, void* user_data) {
+        if (revents &amp; POLLIN) {
+            char buffer[1024];
+            ssize_t n = read(fd, buffer, sizeof(buffer));
+            // Process data...
+        }
+    },
+    nullptr,
+    "my_socket"
+);
+
+// Main event loop
+while (running) {
+    int ret = manager.wait_and_process(1000); // 1 second timeout
+    if (ret &lt; 0) {
+        std::cerr &lt;&lt; "Error: " &lt;&lt; manager.get_last_error() &lt;&lt; std::endl;
+    }
+}</code></pre>
+
+                    <h4>With User Data</h4>
+                    <pre><code class="language-cpp">struct Context {
+    int counter;
+    std::string name;
+};
+
+Context my_context = {0, "MyContext"};
+
+manager.add_fd(
+    fd,
+    POLLIN,
+    [](int fd, short revents, void* user_data) {
+        Context* ctx = static_cast&lt;Context*&gt;(user_data);
+        ctx-&gt;counter++;
+        std::cout &lt;&lt; ctx-&gt;name &lt;&lt; " event #" &lt;&lt; ctx-&gt;counter &lt;&lt; std::endl;
+    },
+    &amp;my_context,
+    "context_fd"
+);</code></pre>
+                </article>
+
+                <article id="signal-events">
+                    <h3>📡 Signal Events</h3>
+                    <p>Clean C++ wrapper around POSIX signal handling APIs.</p>
+
+                    <h4>Basic Signal Handler</h4>
+                    <pre><code class="language-cpp">#include "libevent.h"
+
+void handle_interrupt(int signum) {
+    std::cout &lt;&lt; "Caught signal " &lt;&lt; signum &lt;&lt; std::endl;
+    std::cout &lt;&lt; "Gracefully shutting down..." &lt;&lt; std::endl;
+}
+
+// Set handler
+signal_event::set_signal_handler(SIGINT, handle_interrupt);
+
+// Reset to default
+signal_event::reset_signal_handler(SIGINT);
+
+// Ignore signal
+signal_event::ignore_signal(SIGUSR1);</code></pre>
+
+                    <h4>Extended Signal Handler</h4>
+                    <pre><code class="language-cpp">void extended_handler(int signum, siginfo_t* info, void* context) {
+    std::cout &lt;&lt; "Signal: " &lt;&lt; signal_event::get_signal_name(signum) &lt;&lt; std::endl;
+    std::cout &lt;&lt; "Sender PID: " &lt;&lt; info-&gt;si_pid &lt;&lt; std::endl;
+    std::cout &lt;&lt; "Sender UID: " &lt;&lt; info-&gt;si_uid &lt;&lt; std::endl;
+}
+
+signal_event::set_signal_handler_ex(SIGUSR1, extended_handler);</code></pre>
+
+                    <h4>Blocking and Waiting</h4>
+                    <pre><code class="language-cpp">// Block signals
+signal_event::block_signals({SIGUSR1, SIGUSR2});
+
+// Wait for signal (infinite)
+int received = signal_event::wait_for_signal({SIGUSR1, SIGUSR2});
+
+// Wait with timeout
+received = signal_event::wait_for_signal({SIGUSR1, SIGUSR2}, 5000);
+
+// Check if pending
+if (signal_event::is_signal_pending(SIGUSR1)) {
+    std::cout &lt;&lt; "SIGUSR1 is pending" &lt;&lt; std::endl;
+}</code></pre>
+                </article>
+
+                <article id="fs-events">
+                    <h3>📂 File System Events</h3>
+                    <p>Monitor file system changes using Linux inotify API. Similar to Python's pyinotify.</p>
+
+                    <h4>Basic Example</h4>
+                    <pre><code class="language-cpp">#include "libevent.h"
+
+// Custom event handler
+class my_event_handler : public fs_event::process_event
+{
+public:
+    void process_IN_CREATE(const fs_event::fs_event_info&amp; event) override
+    {
+        std::cout &lt;&lt; "Created: " &lt;&lt; event.get_full_path() &lt;&lt; std::endl;
+    }
+
+    void process_IN_MODIFY(const fs_event::fs_event_info&amp; event) override
+    {
+        std::cout &lt;&lt; "Modified: " &lt;&lt; event.get_full_path() &lt;&lt; std::endl;
+    }
+
+    void process_IN_DELETE(const fs_event::fs_event_info&amp; event) override
+    {
+        std::cout &lt;&lt; "Deleted: " &lt;&lt; event.get_full_path() &lt;&lt; std::endl;
+    }
+};
+
+int main()
+{
+    // Create watch manager
+    auto wm = std::make_shared&lt;fs_event::watch_manager&gt;();
+
+    // Create event handler
+    auto handler = std::make_shared&lt;my_event_handler&gt;();
+
+    // Define events to monitor
+    auto mask = fs_event::fs_event_type::CREATE |
+                fs_event::fs_event_type::MODIFY |
+                fs_event::fs_event_type::DELETE;
+
+    // Add watch (recursive)
+    wm-&gt;add_watch("/path/to/watch", mask, true);
+
+    // Create notifier and start event loop
+    auto notifier = std::make_shared&lt;fs_event::notifier&gt;(wm, handler);
+    notifier-&gt;loop();  // Blocking
+
+    return 0;
+}</code></pre>
+
+                    <h4>Non-Blocking Mode</h4>
+                    <pre><code class="language-cpp">auto notifier = std::make_shared&lt;fs_event::notifier&gt;(wm, handler);
+
+bool running = true;
+while (running) {
+    // Process events with timeout
+    int count = notifier-&gt;process_events(1000);
+    
+    if (count &gt; 0) {
+        std::cout &lt;&lt; "Processed " &lt;&lt; count &lt;&lt; " events" &lt;&lt; std::endl;
+    }
+    
+    // Do other work...
+}</code></pre>
+                </article>
+            </section>
+
+            <section id="pros-cons">
+                <h2>Pros and Cons</h2>
+                <p>Each event handling method has its own advantages and disadvantages. Choose the appropriate technique based on your application's specific requirements.</p>
+
+                <article>
+                    <h3>Message Event Handler</h3>
+                    <div class="pros-cons">
+                        <div class="pros">
+                            <h4>✅ Pros</h4>
+                            <ul>
+                                <li>Asynchronous message processing without blocking</li>
+                                <li>Centralized event handling</li>
+                                <li>Flexible event types (instant, delayed, repeated)</li>
+                                <li>Handler functions can be reused</li>
+                            </ul>
+                        </div>
+                        <div class="cons">
+                            <h4>❌ Cons</h4>
+                            <ul>
+                                <li>Small latency due to queuing</li>
+                                <li>Debugging asynchronous code can be challenging</li>
+                                <li>One message per handler function</li>
+                            </ul>
+                        </div>
+                    </div>
+                </article>
+
+                <article>
+                    <h3>Signals and Slots</h3>
+                    <div class="pros-cons">
+                        <div class="pros">
+                            <h4>✅ Pros</h4>
+                            <ul>
+                                <li>Direct and immediate communication</li>
+                                <li>Simple and intuitive API</li>
+                                <li>One signal can connect to multiple slots</li>
+                                <li>Flexible connection management</li>
+                            </ul>
+                        </div>
+                        <div class="cons">
+                            <h4>❌ Cons</h4>
+                            <ul>
+                                <li>Synchronous execution can block threads</li>
+                                <li>No support for delayed/repeated events</li>
+                                <li>Complex connection graphs hard to debug</li>
+                            </ul>
+                        </div>
+                    </div>
+                </article>
+
+                <article>
+                    <h3>Time Events</h3>
+                    <div class="pros-cons">
+                        <div class="pros">
+                            <h4>✅ Pros</h4>
+                            <ul>
+                                <li>Flexible timer options (one-time, periodic, infinite)</li>
+                                <li>Thread-safe implementation</li>
+                                <li>Support multiple callbacks</li>
+                                <li>Dynamic duration adjustment</li>
+                            </ul>
+                        </div>
+                        <div class="cons">
+                            <h4>❌ Cons</h4>
+                            <ul>
+                                <li>Unix/Linux only (POSIX APIs)</li>
+                                <li>No pause/resume mechanism yet</li>
+                            </ul>
+                        </div>
+                    </div>
+                </article>
+
+                <article>
+                    <h3>Once Events</h3>
+                    <div class="pros-cons">
+                        <div class="pros">
+                            <h4>✅ Pros</h4>
+                            <ul>
+                                <li>Precise control over execution patterns</li>
+                                <li>Thread-safe</li>
+                                <li>Memory efficient</li>
+                                <li>Easy to use API</li>
+                            </ul>
+                        </div>
+                        <div class="cons">
+                            <h4>❌ Cons</h4>
+                            <ul>
+                                <li>No built-in persistence</li>
+                                <li>Limited to single condition</li>
+                                <li>once_at_least has background thread overhead</li>
+                            </ul>
+                        </div>
+                    </div>
+                </article>
+
+                <article>
+                    <h3>Toggle Events</h3>
+                    <div class="pros-cons">
+                        <div class="pros">
+                            <h4>✅ Pros</h4>
+                            <ul>
+                                <li>Simple state management</li>
+                                <li>Thread-safe with condition variables</li>
+                                <li>Flexible waiting (blocking, timeout, non-blocking)</li>
+                                <li>One-time trigger guarantee</li>
+                            </ul>
+                        </div>
+                        <div class="cons">
+                            <h4>❌ Cons</h4>
+                            <ul>
+                                <li>Binary state only</li>
+                                <li>Manual reset required</li>
+                                <li>Potential for deadlocks if used improperly</li>
+                            </ul>
+                        </div>
+                    </div>
+                </article>
+
+                <article>
+                    <h3>File Descriptor Events</h3>
+                    <div class="pros-cons">
+                        <div class="pros">
+                            <h4>✅ Pros</h4>
+                            <ul>
+                                <li>Efficient monitoring using poll()</li>
+                                <li>Thread-safe with mutex protection</li>
+                                <li>Dynamic FD management</li>
+                                <li>Cross-platform on Unix-like systems</li>
+                            </ul>
+                        </div>
+                        <div class="cons">
+                            <h4>❌ Cons</h4>
+                            <ul>
+                                <li>Not scalable for thousands of FDs</li>
+                                <li>Unix-only, no Windows support</li>
+                                <li>Level-triggered only</li>
+                                <li>Requires manual event loop</li>
+                            </ul>
+                        </div>
+                    </div>
+                </article>
+
+                <article>
+                    <h3>Signal Events</h3>
+                    <div class="pros-cons">
+                        <div class="pros">
+                            <h4>✅ Pros</h4>
+                            <ul>
+                                <li>Clean API for POSIX signals</li>
+                                <li>Extended information with siginfo_t</li>
+                                <li>Easy signal blocking/unblocking</li>
+                                <li>Inter-process communication</li>
+                            </ul>
+                        </div>
+                        <div class="cons">
+                            <h4>❌ Cons</h4>
+                            <ul>
+                                <li>Unix/Linux only</li>
+                                <li>Cannot catch SIGKILL/SIGSTOP</li>
+                                <li>Handler restrictions (async-signal-safe only)</li>
+                                <li>Complex interaction with threads</li>
+                            </ul>
+                        </div>
+                    </div>
+                </article>
+
+                <article>
+                    <h3>File System Events</h3>
+                    <div class="pros-cons">
+                        <div class="pros">
+                            <h4>✅ Pros</h4>
+                            <ul>
+                                <li>Efficient kernel-level monitoring</li>
+                                <li>Python-like API (pyinotify style)</li>
+                                <li>Flexible event handling</li>
+                                <li>Recursive watching support</li>
+                                <li>No polling overhead</li>
+                            </ul>
+                        </div>
+                        <div class="cons">
+                            <h4>❌ Cons</h4>
+                            <ul>
+                                <li>Linux only (inotify specific)</li>
+                                <li>System limits on watch count</li>
+                                <li>Event overflow possible</li>
+                                <li>Manual recursive watch management</li>
+                            </ul>
+                        </div>
+                    </div>
+                </article>
+            </section>
+
+            <section id="references">
+                <h2>References</h2>
+                <ul>
+                    <li><a href="https://github.com/endurodave/StdWorkerThread" target="_blank">StdWorkerThread by endurodave</a></li>
+                    <li><a href="https://stackoverflow.com/questions/9711414/what-is-the-proper-way-of-doing-event-handling-in-c" target="_blank">Event Handling in C++ - Stack Overflow</a></li>
+                    <li><a href="https://gameprogrammingpatterns.com/event-queue.html" target="_blank">Event Queue Pattern - Game Programming Patterns</a></li>
+                    <li><a href="https://github.com/wqking/eventpp" target="_blank">eventpp by wqking</a></li>
+                    <li><a href="https://sigslot.sourceforge.net/" target="_blank">sigslot Library</a></li>
+                </ul>
+            </section>
+        </main>
+    </div>
+
+    <footer>
+        <p>&copy; 2026 LibEventCpp. Released under the <a href="https://github.com/nguyenchiemminhvu/LibEventCpp/blob/main/LICENSE" target="_blank">MIT License</a>.</p>
+        <p>Built with ❤️ for the C++ community. <a href="https://github.com/nguyenchiemminhvu/LibEventCpp" target="_blank">Contribute on GitHub</a>.</p>
+    </footer>
+
+    <div class="scroll-top" onclick="window.scrollTo({top: 0, behavior: 'smooth'})">
+        ▲
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/cpp.min.js"></script>
+    <script>
+        // Syntax highlighting
+        hljs.highlightAll();
+
+        // Scroll to top button
+        window.addEventListener('scroll', function() {
+            const scrollTop = document.querySelector('.scroll-top');
+            if (window.pageYOffset > 300) {
+                scrollTop.classList.add('visible');
+            } else {
+                scrollTop.classList.remove('visible');
+            }
+        });
+
+        // Smooth scroll for anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+    </script>
+</body>
+</html>
