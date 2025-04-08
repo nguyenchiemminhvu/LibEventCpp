@@ -5,13 +5,15 @@
   - [Usage](#usage)
     - [Message Event Handler](#message-event-handler)
     - [Signals And Slots](#signals-and-slots)
-  - [Benchmark](#benchmark)
+    - [Time events](#time-events)
+  - [Pros And Cons](#pros-and-cons)
     - [Message Event Handler](#message-event-handler-1)
     - [Signals And Slots](#signals-and-slots-1)
-  - [Memory Leak check](#memory-leak-check)
+    - [Time Event](#time-event)
+  - [Benchmark](#benchmark)
     - [Message Event Handler](#message-event-handler-2)
     - [Signals And Slots](#signals-and-slots-2)
-  - [Pros And Cons](#pros-and-cons)
+  - [Memory Leak check](#memory-leak-check)
     - [Message Event Handler](#message-event-handler-3)
     - [Signals And Slots](#signals-and-slots-3)
   - [References](#references)
@@ -239,6 +241,110 @@ test_sig_lambda.disconnect_all_callable();
 
 Checkout the sample signal and slot source code [HERE](https://github.com/nguyenchiemminhvu/LibEventCpp/blob/main/sample_sigslot.cpp).
 
+### Time events
+
+The ```time_event::timer``` class provides a thread-safe mechanism for creating and managing timers in a multithreaded environment. It supports ont-shot and periodic timers, with the ability to invoke user-defined callback functions upon expiration.
+
+Checkout the sample message event handler source code [HERE](https://github.com/nguyenchiemminhvu/LibEventCpp/blob/main/sample_timer.cpp).
+
+Note that the ```time_event::timer``` uses ```POSIX``` APIs (```timer_create```, ```timer_settime```, etc...) so it is only supported on platforms that provide these APIs.
+
+**Include necessary headers**
+
+```
+#include "libevent.h"
+```
+
+**Create timer instance**
+
+```
+time_event::timer my_timer;
+```
+
+**Set duration**
+
+```
+my_timer.set_duration(1000); // 1 second
+```
+
+**Adding callbacks**
+
+```
+my_timer.add_callback([]() {
+    std::cout << "Timer expired!" << std::endl;
+});
+```
+
+**Start the timer**
+
+```
+try
+{
+  my_timer.start(5); // repeat 5 times
+  my_timer.start(0); // one-shot
+  my_timer.start(); // repeat forever
+}
+catch (const std::runtime_error& e)
+{
+  // It is possible that timer creation is failed.
+  // In that case, exception runtime_error is thrown
+}
+```
+
+**Actively stop the timer**
+
+```
+my_timer.stop();
+```
+
+## Pros And Cons
+
+Each method of event handling/processing has its own advantages and disadvantages. It is important to carefully evaluate the specific requirements and constraints of your application before choosing the appropriate technique (such as performance, complexity, flexibility, scalability...).
+
+### Message Event Handler
+
+**Pros:**
+
+- Messages are processed asynchronously, which helps in managing tasks without blocking the main thread, useful for heavy task or periodic events.
+- The ```message_handler``` acts as a centralized handler for all event messages, easy to manage and organize source codes.
+- Flexible with different types of events (instant, delayed, or repeated messages).
+- A handler function can encapsulate a specific logic and be reused across different parts of the application.
+
+**Cons:**
+
+- Messages must be enqueued, dequeued, and then processed, which can introduce a small latency compared to direct execution.
+- Debugging asynchronous messages can be challenging, especially race condition happens.
+- A message can be handled by only one handler function.
+
+### Signals And Slots
+
+**Pros:**
+
+- Provide direct and immediate communication between objects.
+- Connecting signals to slots is straightforward, easy to use and understand.
+- A signal can be connected to multiple slots, useful for broadcasting of events.
+- Connection can be easily closed by sender or receiver, provide flexibility in connection management.
+
+**Cons:**
+
+- Synchronous execution can blocked main thread if the slots are time-consuming.
+- Does not support different types of triggering events like event handler (instant, delayed, or repeated).
+- When the connection graph becomes complex, debugging can be challenging.
+
+### Time Event
+
+**Pros:**
+
+- Flexible timer options: one-time timer, periodic timer, infinite timer.
+- Thread-safe
+- Support multiple callbacks
+- Dynamic duration adjustment
+
+**Cons:**
+
+- Support Unix/Linux only
+- Not yet support pause/resume mechanism
+
 ## Benchmark
 
 ### Message Event Handler
@@ -384,40 +490,6 @@ Process 10028: 0 leaks for 0 total leaked bytes.
 ```
 
 => No memory leak issue detected by Leaks tool.
-
-## Pros And Cons
-
-Each method of event handling/processing has its own advantages and disadvantages. It is important to carefully evaluate the specific requirements and constraints of your application before choosing the appropriate technique (such as performance, complexity, flexibility, scalability...).
-
-### Message Event Handler
-
-**Pros:**
-
-- Messages are processed asynchronously, which helps in managing tasks without blocking the main thread, useful for heavy task or periodic events.
-- The ```message_handler``` acts as a centralized handler for all event messages, easy to manage and organize source codes.
-- Flexible with different types of events (instant, delayed, or repeated messages).
-- A handler function can encapsulate a specific logic and be reused across different parts of the application.
-
-**Cons:**
-
-- Messages must be enqueued, dequeued, and then processed, which can introduce a small latency compared to direct execution.
-- Debugging asynchronous messages can be challenging, especially race condition happens.
-- A message can be handled by only one handler function.
-
-### Signals And Slots
-
-**Pros:**
-
-- Provide direct and immediate communication between objects.
-- Connecting signals to slots is straightforward, easy to use and understand.
-- A signal can be connected to multiple slots, useful for broadcasting of events.
-- Connection can be easily closed by sender or receiver, provide flexibility in connection management.
-
-**Cons:**
-
-- Synchronous execution can blocked main thread if the slots are time-consuming.
-- Does not support different types of triggering events like event handler (instant, delayed, or repeated).
-- When the connection graph becomes complex, debugging can be challenging.
 
 ## References
 

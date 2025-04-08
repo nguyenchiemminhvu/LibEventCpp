@@ -4,13 +4,15 @@
 #include <iostream>
 #include <string>
 
-class TestHandler : public event_handler::message_handler
+class Manager;
+class TestHandler
+    : public event_handler::message_handler
 {
 public:
-    TestHandler()
+    TestHandler(Manager* pManager)
         : event_handler::message_handler()
     {
-
+        this->pManager = pManager;
     }
 
     virtual ~TestHandler()
@@ -18,69 +20,134 @@ public:
         std::cout << "TestHandler destructor" << std::endl;
     }
 
-    void print_message(std::string s)
+    void init()
     {
-        std::cout << s << std::endl;
+        std::cout << "TestHandler init" << std::endl;
+        repeat_itself();
     }
 
-    void do_heavy_work(int ith)
+    void handle_a()
     {
-        for (int i = 0; i < 1000; i++)
-        {
-            // do something
-            int val = i & 1;
-            (void)(val);
-        }
-
-        std::cout << "Done a heavy work ith = " << ith << std::endl;
+        std::cout << "Handle A" << std::endl;
     }
 
-    void repated_work()
+    void handle_b()
     {
-        static std::size_t repeated_times = 0U;
-        repeated_times++;
-        std::cout << "This is a job for repeated message, " << repeated_times << " times" << std::endl;
+        std::cout << "Handle B" << std::endl;
+    }
+    
+    void repeat_itself()
+    {
+        std::cout << "Repeat itself" << std::endl;
+        this->post_delayed_message(1000U, &TestHandler::repeat_itself);
     }
 
-    void tick()
-    {
-        std::cout << "Tick every 1 second..." << std::endl;
-        this->post_delayed_message(1000U, &TestHandler::tick);
-    }
+private:
+    Manager* pManager;
 };
 
-class NotHandler
+class Provider : public event_handler::message_handler
 {
 public:
-    NotHandler()
+    Provider(Manager* pManager, std::shared_ptr<TestHandler> handler)
+        : event_handler::message_handler()
     {
-
+        this->pManager = pManager;
+        this->handler = handler;
+        std::cout << "Provider constructor" << std::endl;
     }
 
-    void nothing_to_do()
+    ~Provider()
     {
-        std::cout << "Nothing to do" << std::endl;
+        std::cout << "Provider destructor" << std::endl;
     }
+
+    void send_a_message()
+    {
+        std::cout << "Send A message" << std::endl;
+        auto handler_ptr = handler.lock();
+        if (handler_ptr)
+        {
+            handler_ptr->post_message(&TestHandler::handle_a);
+        }
+        else
+        {
+            std::cout << "Handler is no longer available" << std::endl;
+        }
+    }
+
+    void send_b_message()
+    {
+        std::cout << "Send B message" << std::endl;
+        auto handler_ptr = handler.lock();
+        if (handler_ptr)
+        {
+            handler_ptr->post_message(&TestHandler::handle_b);
+        }
+        else
+        {
+            std::cout << "Handler is no longer available" << std::endl;
+        }
+    }
+private:
+    Manager* pManager;
+    std::weak_ptr<TestHandler> handler;
 };
+
+std::weak_ptr<Provider> g_provider;
+
+class Manager
+{
+public:
+    Manager()
+    {
+        std::cout << "Manager constructor" << std::endl;
+        handler = std::make_shared<TestHandler>(this);
+        handler->init();
+        provider = std::make_shared<Provider>(this, handler);
+
+        g_provider = provider;
+    }
+
+    ~Manager()
+    {
+        std::cout << "Manager destructor" << std::endl;
+    }
+
+private:
+    std::shared_ptr<TestHandler> handler;
+    std::shared_ptr<Provider> provider;
+};
+
+Manager * g_manager = nullptr;
+
+void thread_func()
+{
+    while (true)
+    {
+        auto provider_ptr = g_provider.lock();
+        if (provider_ptr)
+        {
+            provider_ptr->send_a_message();
+            provider_ptr->send_b_message();
+        }
+
+        usleep(1000000U);
+    }
+}
 
 int main()
 {
-    std::shared_ptr<TestHandler> handler = std::make_shared<TestHandler>();
+    g_manager = new Manager();
 
-    // error: static assertion failed: T must be derived from MessageHandler
-    // handler->post_message(&NotHandler::nothing_to_do);
+    std::thread t(thread_func);
+    t.detach();
+    std::cout << "Thread started" << std::endl;
 
-    handler->post_message(&TestHandler::print_message, "Hello event handler");
-    handler->post_delayed_message(2000U, &TestHandler::print_message, "The delayed message is printed after 2 seconds");
-    handler->post_repeated_message(5, 1000U, &TestHandler::repated_work);
-    handler->post_message(&TestHandler::tick);
-
-    for (int i = 0; i < 10; i++)
+    while (true)
     {
-        handler->post_message(&TestHandler::do_heavy_work, i);
+        pause();
     }
-
-    std::this_thread::sleep_for(std::chrono::seconds(5));
 
     return 0;
 }

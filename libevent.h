@@ -39,6 +39,11 @@
 #ifndef LIB_FOR_EVENT_DRIVEN_PROGRAMMING
 #define LIB_FOR_EVENT_DRIVEN_PROGRAMMING
 
+#if defined(unix) || defined(__unix__) || defined(__unix) || defined(__linux__)
+#include <unistd.h>
+#include <signal.h>
+#endif
+
 #include <type_traits>
 #include <cstdint>
 #include <utility>
@@ -56,6 +61,8 @@
 #include <atomic>
 #include <condition_variable>
 #include <memory>
+#include <ctime>
+#include <stdexcept>
 
 #if (defined(__cplusplus) && __cplusplus >= 202002L) || (defined(_MSVC_LANG) && _MSVC_LANG >= 202002L)
     #define LIB_EVENT_CPP_20
@@ -155,7 +162,7 @@ namespace event_handler
             i_message::m_timestamp = std::chrono::steady_clock::now();
         }
 
-        event_message(uint32_t delay_ms, std::shared_ptr<Handler> handler, void(Handler::*act)(Args...), Args... args)
+        event_message(uint64_t delay_ms, std::shared_ptr<Handler> handler, void(Handler::*act)(Args...), Args... args)
             : m_handler(handler), m_act(act), m_args(std::make_tuple(args...))
         {
             i_message::m_timestamp = std::chrono::steady_clock::now() + std::chrono::milliseconds(delay_ms);
@@ -169,7 +176,7 @@ namespace event_handler
             return mess;
         }
 
-        static std::shared_ptr<i_message> create(uint32_t delay_ms, std::shared_ptr<Handler> handler, void(Handler::*act)(Args...), Args... args)
+        static std::shared_ptr<i_message> create(uint64_t delay_ms, std::shared_ptr<Handler> handler, void(Handler::*act)(Args...), Args... args)
         {
             std::shared_ptr<i_message> mess = std::make_shared<event_message<Handler, Args...>>(delay_ms, handler, act, args...);
             return mess;
@@ -239,7 +246,7 @@ namespace event_handler
                 return nullptr;
             }
 
-            std::shared_ptr<i_message> mess = std::move(m_queue.top());
+            std::shared_ptr<i_message> mess = m_queue.top();
             m_queue.pop();
 
             steady_timestamp_t current_timestamp = std::chrono::steady_clock::now();
@@ -379,7 +386,7 @@ namespace event_handler
         }
 
         template<typename T, typename... Args>
-        void post_delayed_message(uint32_t delay_ms, void (T::*func)(typename convert_arg<Args>::type...), Args... args)
+        void post_delayed_message(uint64_t delay_ms, void (T::*func)(typename convert_arg<Args>::type...), Args... args)
         {
             static_assert(std::is_base_of<message_handler, T>::value, "T must be derived from message_handler");
 
@@ -401,7 +408,7 @@ namespace event_handler
 
             for (std::size_t i = 0U; i < times; ++i)
             {
-                uint32_t delay_ms = (duration_ms * i);
+                uint64_t delay_ms = (duration_ms * i);
                 this->post_delayed_message(delay_ms, func, std::forward<typename convert_arg<Args>::type>(args)...);
             }
         }
@@ -685,5 +692,213 @@ namespace sigslot
         signal.connect(slot, member_func);
     }
 }; // namespace sigslot
+
+#if defined(unix) || defined(__unix__) || defined(__unix) || defined(__linux__)
+namespace time_event
+{
+    class timer
+    {
+    public:
+        timer()
+            : m_timer_id(0)
+            , m_duration_ms(0)
+            , m_repeat_count(-1) // -1 means infinite
+            , m_repeat_counter(0)
+            , m_running(false)
+        {
+        }
+
+        virtual ~timer()
+        {
+            this->stop();
+            clear_callbacks();
+        }
+
+        /**
+         * @param repeat_count: number of times to repeat the timer
+         * -1 means repeat forever
+         * 0 means one shot timer
+         * repeat_count > 0 means repeat that number of times
+         */
+        void start(int64_t repeat_count = -1)
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+
+            if (m_running)
+            {
+                return;
+            }
+
+            m_repeat_count = repeat_count;
+            m_repeat_counter = 0;
+            
+            struct sigevent sev{};
+            sev.sigev_notify = SIGEV_THREAD;
+            sev.sigev_notify_function = timer_timeout_handler;
+            sev.sigev_value.sival_ptr = this;
+            sev.sigev_notify_attributes = nullptr;
+            if (timer_create(CLOCK_MONOTONIC, &sev, &m_timer_id) == -1)
+            {
+                throw std::runtime_error("Failed to create time_event::timer instance");
+            }
+
+            struct itimerspec its{};
+            /**
+             * it_value is when the timer first expires after being started.
+             * If it_value is:
+             * Non-zero → the timer starts ticking immediately and will fire after this duration.
+             * Zero → the timer is disarmed (i.e., it won't start).
+             * 
+             * it_interval defines the interval between subsequent expirations.
+             * If it_interval is:
+             * Zero → the timer is one-shot (fires once).
+             * Non-zero → the timer is periodic (fires repeatedly every interval after the initial one).
+             */
+
+            if (m_repeat_count != 0)
+            {
+                its.it_value.tv_sec = m_duration_ms / 1000;
+                its.it_value.tv_nsec = (m_duration_ms % 1000) * 1000000;
+                its.it_interval.tv_sec = m_duration_ms / 1000;
+                its.it_interval.tv_nsec = (m_duration_ms % 1000) * 1000000;
+            }
+            else // one shot timer
+            {
+                its.it_value.tv_sec = m_duration_ms / 1000;
+                its.it_value.tv_nsec = (m_duration_ms % 1000) * 1000000;
+                its.it_interval.tv_sec = 0;
+                its.it_interval.tv_nsec = 0;
+            }
+
+            if (timer_settime(m_timer_id, 0, &its, nullptr) == -1)
+            {
+                if (m_timer_id != 0)
+                {
+                    timer_delete(m_timer_id);
+                    m_timer_id = 0;
+                }
+                throw std::runtime_error("Failed to set time_event::timer instance");
+            }
+
+            m_running = true;
+        }
+
+        void stop()
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            if (m_running)
+            {
+                m_running = false;
+                m_repeat_counter = 0;
+            }
+
+            if (m_timer_id != 0)
+            {
+                timer_delete(m_timer_id);
+                m_timer_id = 0;
+            }
+        }
+
+        void set_duration(int64_t milliseconds)
+        {
+            {
+                std::lock_guard<std::mutex> lock(m_mutex);
+                m_duration_ms = milliseconds;
+            }
+
+            // If the timer is running, we need to stop and restart it with the new duration
+            if (m_running)
+            {
+                this->stop();
+                this->start(m_repeat_count);
+            }
+        }
+
+        void add_callback(const std::function<void()>& cb)
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_callbacks.push_back(cb);
+        }
+
+        void clear_callbacks()
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_callbacks.clear();
+        }
+
+        bool is_running() const
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            return m_running;
+        }
+
+    private:
+        static void timer_timeout_handler(union sigval sv)
+        {
+            timer* p_timer = static_cast<timer*>(sv.sival_ptr);
+            if (p_timer)
+            {
+                p_timer->invoke_callbacks();
+
+                bool should_stop = false;
+                {
+                    std::lock_guard<std::mutex> lock(p_timer->m_mutex);
+                    if (p_timer->m_repeat_count == 0)
+                    {
+                        should_stop = true;
+                    }
+                    else if (p_timer->m_repeat_count > 0)
+                    {
+                        p_timer->m_repeat_counter++;
+                        if (p_timer->m_repeat_counter >= p_timer->m_repeat_count)
+                        {
+                            should_stop = true;
+                        }
+                    }
+                    else // repeat forever
+                    {
+                        // do nothing, just keep the timer running
+                    }
+                }
+
+                if (should_stop)
+                {
+                    p_timer->stop();
+                }
+            }
+        }
+
+        void invoke_callbacks()
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            for (const auto& func : m_callbacks)
+            {
+                func();
+            }
+        }
+    
+    private:
+        timer_t m_timer_id;
+        mutable std::mutex m_mutex;
+        int64_t m_duration_ms;
+        int64_t m_repeat_count;
+        std::atomic<int64_t> m_repeat_counter;
+        std::atomic<bool> m_running;
+        std::vector<std::function<void()>> m_callbacks;
+    };
+}
+#else
+namespace timer_event
+{
+    class timer
+    {
+    public:
+        timer()
+        {
+            static_assert(false, "timer_event is not supported on this platform.");
+        }
+    };
+}
+#endif
 
 #endif // LIB_FOR_EVENT_DRIVEN_PROGRAMMING
