@@ -217,23 +217,25 @@ namespace event_handler
 
         virtual ~message_queue()
         {
-            if (m_running)
-            {
-                this->stop();
-            }
+            this->stop();
         }
 
         void enqueue(std::shared_ptr<i_message> mess)
         {
+            bool enqueued = false;
             {
-                std::unique_lock<std::mutex> lock(m_mut);
+                std::lock_guard<std::mutex> lock(m_mut);
                 if (m_running)
                 {
                     m_queue.push(std::move(mess));
+                    enqueued = true;
                 }
             }
 
-            m_cond.notify_one();
+            if (enqueued)
+            {
+                m_cond.notify_all();
+            }
         }
 
         std::shared_ptr<i_message> poll()
@@ -260,7 +262,6 @@ namespace event_handler
                     // The wait was notified before the timeout duration expired.
                     lock.unlock(); // unlock so that enqueue can push new message to the queue without dead lock
                     this->enqueue(mess);
-                    lock.lock();
                     mess = nullptr;
                 }
             }
@@ -270,9 +271,21 @@ namespace event_handler
 
         virtual void stop()
         {
-            m_running = false;
-            m_queue = std::priority_queue<std::shared_ptr<i_message>, std::vector<std::shared_ptr<i_message>>, message_comparator>();
-            m_cond.notify_all();
+            bool state_changed = false;
+            {
+                std::lock_guard<std::mutex> lock(m_mut);
+                if (m_running)
+                {
+                    m_running = false;
+                    state_changed = true;
+                    m_queue = std::priority_queue<std::shared_ptr<i_message>, std::vector<std::shared_ptr<i_message>>, message_comparator>();
+                }
+            }
+
+            if (state_changed)
+            {
+                m_cond.notify_all();
+            }
         }
 
     private:
@@ -299,18 +312,11 @@ namespace event_handler
         {
             m_message_queue = std::make_shared<message_queue>();
             m_looper_thread = std::thread(&message_looper::looper, this);
-
-            sched_param sch{};
-            sch.sched_priority = 20;
-            (void)pthread_setschedparam(m_looper_thread.native_handle(), SCHED_FIFO, &sch);
         }
 
         virtual ~message_looper()
         {
-            if (m_running)
-            {
-                this->stop();
-            }
+            this->stop();
         }
 
         std::shared_ptr<message_queue> get_message_queue()
@@ -320,10 +326,19 @@ namespace event_handler
 
         virtual void stop()
         {
-            if (m_running)
+            bool state_changed = false;
             {
-                m_running = false;
-                m_message_queue->stop();
+                std::lock_guard<std::mutex> lock(m_mut);
+                if (m_running)
+                {
+                    m_running = false;
+                    state_changed = true;
+                    m_message_queue->stop();
+                }
+            }
+
+            if (state_changed)
+            {
                 m_looper_thread.join();
             }
         }
@@ -331,8 +346,16 @@ namespace event_handler
     private:
         void looper()
         {
-            while (m_running)
+            while (true)
             {
+                {
+                    std::lock_guard<std::mutex> lock(m_mut);
+                    if (!m_running)
+                    {
+                        break;
+                    }
+                }
+
                 std::shared_ptr<i_message> mess = nullptr;
                 if (m_message_queue != nullptr)
                 {
@@ -350,6 +373,7 @@ namespace event_handler
         std::atomic<bool> m_running;
         std::thread m_looper_thread;
         std::shared_ptr<message_queue> m_message_queue;
+        std::mutex m_mut;
     };
 
     class message_handler : public i_stoppable, public std::enable_shared_from_this<message_handler>
@@ -361,12 +385,18 @@ namespace event_handler
             m_message_queue = m_looper->get_message_queue();
         }
 
+        message_handler(std::shared_ptr<message_looper> looper)
+            : m_looper(looper)
+        {
+            if (looper)
+            {
+                m_message_queue = looper->get_message_queue();
+            }
+        }
+
         virtual ~message_handler()
         {
-            if (m_looper)
-            {
-                this->stop();
-            }
+            this->stop();
         }
 
         template<typename T, typename... Args>
@@ -415,7 +445,10 @@ namespace event_handler
 
         virtual void stop()
         {
-            m_looper->stop();
+            if (m_looper)
+            {
+                m_looper->stop();
+            }
         }
 
     protected:

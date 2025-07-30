@@ -4,15 +4,13 @@
 #include <iostream>
 #include <string>
 
-class Manager;
 class TestHandler
     : public event_handler::message_handler
 {
 public:
-    TestHandler(Manager* pManager)
-        : event_handler::message_handler()
+    TestHandler()
+        : event_handler::message_handler(std::make_shared<event_handler::message_looper>())
     {
-        this->pManager = pManager;
     }
 
     virtual ~TestHandler()
@@ -41,113 +39,18 @@ public:
         std::cout << "Repeat itself" << std::endl;
         this->post_delayed_message(1000U, &TestHandler::repeat_itself);
     }
-
-private:
-    Manager* pManager;
 };
-
-class Provider : public event_handler::message_handler
-{
-public:
-    Provider(Manager* pManager, std::shared_ptr<TestHandler> handler)
-        : event_handler::message_handler()
-    {
-        this->pManager = pManager;
-        this->handler = handler;
-        std::cout << "Provider constructor" << std::endl;
-    }
-
-    ~Provider()
-    {
-        std::cout << "Provider destructor" << std::endl;
-    }
-
-    void send_a_message()
-    {
-        std::cout << "Send A message" << std::endl;
-        auto handler_ptr = handler.lock();
-        if (handler_ptr)
-        {
-            handler_ptr->post_message(&TestHandler::handle_a);
-        }
-        else
-        {
-            std::cout << "Handler is no longer available" << std::endl;
-        }
-    }
-
-    void send_b_message()
-    {
-        std::cout << "Send B message" << std::endl;
-        auto handler_ptr = handler.lock();
-        if (handler_ptr)
-        {
-            handler_ptr->post_message(&TestHandler::handle_b);
-        }
-        else
-        {
-            std::cout << "Handler is no longer available" << std::endl;
-        }
-    }
-private:
-    Manager* pManager;
-    std::weak_ptr<TestHandler> handler;
-};
-
-std::weak_ptr<Provider> g_provider;
-
-class Manager
-{
-public:
-    Manager()
-    {
-        std::cout << "Manager constructor" << std::endl;
-        handler = std::make_shared<TestHandler>(this);
-        handler->init();
-        provider = std::make_shared<Provider>(this, handler);
-
-        g_provider = provider;
-    }
-
-    ~Manager()
-    {
-        std::cout << "Manager destructor" << std::endl;
-    }
-
-private:
-    std::shared_ptr<TestHandler> handler;
-    std::shared_ptr<Provider> provider;
-};
-
-Manager * g_manager = nullptr;
-
-void thread_func()
-{
-    while (true)
-    {
-        auto provider_ptr = g_provider.lock();
-        if (provider_ptr)
-        {
-            provider_ptr->send_a_message();
-            provider_ptr->send_b_message();
-        }
-
-        usleep(1000000U);
-    }
-}
 
 int main()
 {
-    g_manager = new Manager();
+    std::shared_ptr<TestHandler> handler = std::make_shared<TestHandler>();
+    handler->init();
 
-    std::thread t(thread_func);
-    t.detach();
-    std::cout << "Thread started" << std::endl;
+    handler->post_message(&TestHandler::handle_a);
+    handler->post_message(&TestHandler::handle_b);
 
-    while (true)
-    {
-        pause();
-    }
+    std::this_thread::sleep_for(std::chrono::seconds(3));
+    handler->stop();
 
     return 0;
 }
