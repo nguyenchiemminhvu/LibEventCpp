@@ -9,7 +9,7 @@ class TestHandler
 {
 public:
     TestHandler()
-        : event_handler::message_handler(std::make_shared<event_handler::message_looper>())
+        : event_handler::message_handler()
     {
     }
 
