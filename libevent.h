@@ -399,6 +399,19 @@ namespace event_handler
             this->stop();
         }
 
+        /**
+         * Highly recommend to bind looper on initializattion phase only.
+         */
+        void bind_looper(std::shared_ptr<message_looper> looper)
+        {
+            std::lock_guard<std::mutex> lock(m_mut);
+            if (looper)
+            {
+                m_looper = looper;
+                m_message_queue = looper->get_message_queue();
+            }
+        }
+
         template<typename T, typename... Args>
         void post_message(void (T::*func)(typename convert_arg<Args>::type...), Args... args)
         {
@@ -408,6 +421,7 @@ namespace event_handler
             if (shared_this)
             {
                 std::shared_ptr<i_message> mess = event_message<T, typename convert_arg<Args>::type...>::create(std::dynamic_pointer_cast<T>(shared_this), func, std::forward<typename convert_arg<Args>::type>(args)...);
+                std::lock_guard<std::mutex> lock(m_mut);
                 if (m_message_queue != nullptr)
                 {
                     m_message_queue->enqueue(mess);
@@ -424,6 +438,7 @@ namespace event_handler
             if (shared_this)
             {
                 std::shared_ptr<i_message> mess = event_message<T, typename convert_arg<Args>::type...>::create(delay_ms, std::dynamic_pointer_cast<T>(shared_this), func, std::forward<typename convert_arg<Args>::type>(args)...);
+                std::lock_guard<std::mutex> lock(m_mut);
                 if (m_message_queue != nullptr)
                 {
                     m_message_queue->enqueue(mess);
@@ -467,6 +482,7 @@ namespace event_handler
     private:
         std::shared_ptr<message_looper> m_looper;
         std::shared_ptr<message_queue> m_message_queue;
+        std::mutex m_mut;
     };
 } // namespace event_handler
 

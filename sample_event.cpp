@@ -41,6 +41,83 @@ public:
     }
 };
 
+class TestHandler1
+    : public event_handler::message_handler
+{
+public:
+    TestHandler1()
+        : event_handler::message_handler()
+    {
+    }
+
+    virtual ~TestHandler1()
+    {
+        std::cout << "TestHandler1 destructor" << std::endl;
+    }
+
+    void some_method()
+    {
+        std::cout << "Some method in Handler 1" << std::endl;
+    }
+};
+
+class TestHandler2
+    : public event_handler::message_handler
+{
+public:
+    TestHandler2()
+        : event_handler::message_handler()
+    {
+    }
+
+    virtual ~TestHandler2()
+    {
+        std::cout << "TestHandler2 destructor" << std::endl;
+    }
+
+    void some_method()
+    {
+        std::cout << "Some method in Handler 2" << std::endl;
+    }
+};
+
+class TestMultiHandler
+{
+public:
+    TestMultiHandler()
+    {
+        m_low_prio_looper = std::make_shared<event_handler::message_looper>();
+        m_high_prio_looper = std::make_shared<event_handler::message_looper>();
+
+        m_handler1 = std::make_shared<TestHandler1>();
+        m_handler1->bind_looper(m_low_prio_looper);
+
+        m_handler2 = std::make_shared<TestHandler2>();
+        m_handler2->bind_looper(m_high_prio_looper);
+    }
+
+    virtual ~TestMultiHandler()
+    {
+        std::cout << "TestMultiHandler destructor" << std::endl;
+    }
+
+    void send_to_handler_1()
+    {
+        m_handler1->post_message(&TestHandler1::some_method);
+    }
+
+    void send_to_handler_2()
+    {
+        m_handler2->post_message(&TestHandler2::some_method);
+    }
+
+private:
+    std::shared_ptr<TestHandler1> m_handler1;
+    std::shared_ptr<TestHandler2> m_handler2;
+    std::shared_ptr<event_handler::message_looper> m_low_prio_looper;
+    std::shared_ptr<event_handler::message_looper> m_high_prio_looper;
+};
+
 int main()
 {
     std::shared_ptr<TestHandler> handler = std::make_shared<TestHandler>();
@@ -51,6 +128,17 @@ int main()
 
     std::this_thread::sleep_for(std::chrono::seconds(3));
     handler->stop();
+
+    std::shared_ptr<TestMultiHandler> multi_handler = std::make_shared<TestMultiHandler>();
+    multi_handler->send_to_handler_1();
+    multi_handler->send_to_handler_2();
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+    multi_handler->send_to_handler_1();
+    multi_handler->send_to_handler_2();
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+    multi_handler->send_to_handler_1();
+    multi_handler->send_to_handler_2();
+    std::this_thread::sleep_for(std::chrono::seconds(1));
 
     return 0;
 }
