@@ -52,6 +52,8 @@
 #include <set>
 #include <list>
 #include <queue>
+#include <unordered_map>
+#include <unordered_set>
 #include <functional>
 #include <tuple>
 #include <chrono>
@@ -949,5 +951,35 @@ namespace timer_event
     };
 }
 #endif
+
+namespace once_event
+{
+    /** Compile source code with -pthread flag to get rid of runtime std::system_error exception */
+    class once_event
+    {
+    public:
+        once_event() = default;
+        ~once_event() = default;
+
+        template <typename... Args>
+        void call_once(std::function<void(Args...)> func, Args... args)
+        {
+            std::call_once(m_flag, [=]() mutable {
+                func(std::forward<Args>(args)...);
+            });
+        }
+
+        template <typename Cls, typename... Args>
+        void call_once(void (Cls::*member_func)(Args...), Cls* obj, Args... args)
+        {
+            std::call_once(m_flag, [=]() mutable{
+                (obj->*member_func)(std::forward<Args>(args)...);
+            });
+        }
+
+    private:
+        std::once_flag m_flag;
+    };
+} // namespace once_event
 
 #endif // LIB_FOR_EVENT_DRIVEN_PROGRAMMING
