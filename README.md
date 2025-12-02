@@ -6,10 +6,12 @@
     - [Message Event Handler](#message-event-handler)
     - [Signals And Slots](#signals-and-slots)
     - [Time events](#time-events)
+    - [File descriptor events](#file-descriptor-events)
   - [Pros And Cons](#pros-and-cons)
     - [Message Event Handler](#message-event-handler-1)
     - [Signals And Slots](#signals-and-slots-1)
     - [Time Event](#time-event)
+    - [File descriptor Events](#file-descriptor-events-1)
   - [Benchmark](#benchmark)
     - [Message Event Handler](#message-event-handler-2)
     - [Signals And Slots](#signals-and-slots-2)
@@ -297,6 +299,143 @@ catch (const std::runtime_error& e)
 my_timer.stop();
 ```
 
+### File descriptor events
+
+**Features**
+
+- **Multiple FD Management**: Monitor multiple file descriptors simultaneously
+- **Event-Driven Callbacks**: Register callbacks for specific events (READ, WRITE, ERROR, etc.)
+- **Thread-Safe**: All operations are protected with mutex locks
+- **Dynamic FD Management**: Add, remove, enable, or disable file descriptors at runtime
+- **User Data Support**: Pass custom data to callbacks
+- **Error Handling**: Comprehensive error reporting with optional error handlers
+- **Clean API**: Simple and intuitive interface
+
+All methods are protected with a mutex, making the `fd_event_manager` thread-safe for:
+- Adding/removing FDs from multiple threads
+- Enabling/disabling FDs
+- Querying FD status
+
+**Note**: Callbacks are invoked from the thread that calls `wait()` or `wait_and_process()`.
+
+**Examples**:
+
+```cpp
+#include "fd_event.h"
+
+fd_event::fd_event_manager manager;
+
+// Add file descriptor with callback
+manager.add_fd(
+    socket_fd,
+    static_cast<short>(fd_event::event_type::READ),
+    [](int fd, short revents, void* user_data) {
+        if (revents & POLLIN) {
+            char buffer[1024];
+            ssize_t n = read(fd, buffer, sizeof(buffer));
+            // Process data...
+        }
+    },
+    nullptr,
+    "my_socket"
+);
+
+// Main loop
+while (running) {
+    int ret = manager.wait_and_process(1000); // 1 second timeout
+    if (ret < 0) {
+        std::cerr << "Error: " << manager.get_last_error() << std::endl;
+    }
+}
+```
+
+```cpp
+struct Context {
+    int counter;
+    std::string name;
+};
+
+Context my_context = {0, "MyContext"};
+
+manager.add_fd(
+    fd,
+    POLLIN,
+    [](int fd, short revents, void* user_data) {
+        Context* ctx = static_cast<Context*>(user_data);
+        ctx->counter++;
+        std::cout << ctx->name << " event #" << ctx->counter << std::endl;
+    },
+    &my_context,
+    "context_fd"
+);
+```
+
+```cpp
+manager.set_error_handler([](const std::string& error) {
+    std::cerr << "fd_event_manager Error: " << error << std::endl;
+});
+
+manager.add_fd(
+    fd,
+    POLLIN,
+    [](int fd, short revents, void* user_data) {
+        if (revents & POLLERR) {
+            std::cerr << "Error on fd " << fd << std::endl;
+        }
+        if (revents & POLLHUP) {
+            std::cerr << "Hangup on fd " << fd << std::endl;
+        }
+        if (revents & POLLIN) {
+            // Handle data...
+        }
+    }
+);
+```
+
+```cpp
+fd_event::fd_event_manager fd_manager;
+
+// Context for callback
+struct GnssContext {
+    GnssCommander* commander;
+    CParserBuffer* parser;
+};
+GnssContext ctx = {pCommander, &parser};
+
+// Add GNSS receiver FD
+fd_manager.add_fd(
+    pCommander->get_receiver()->get_fd(),
+    static_cast<short>(fd_event::event_type::READ),
+    [](int fd, short revents, void* user_data) {
+        GnssContext* ctx = static_cast<GnssContext*>(user_data);
+        
+        if (revents & POLLHUP) {
+            LOG_ERROR("GNSS receiver hang up");
+            return;
+        }
+        if (revents & POLLERR) {
+            LOG_ERROR("GNSS receiver error");
+            return;
+        }
+        if (revents & POLLIN) {
+            ctx->commander->lock_operation();
+            // Read and process data...
+            ctx->commander->unlock_operation();
+        }
+    },
+    &ctx,
+    "gnss_receiver"
+);
+
+// Main loop
+while (pCommander->is_running()) {
+    int ret = fd_manager.wait_and_process(timeout);
+    if (ret < 0) {
+        LOG_ERROR("Event manager error: %s", fd_manager.get_last_error().c_str());
+    }
+}
+```
+
 ## Pros And Cons
 
 Each method of event handling/processing has its own advantages and disadvantages. It is important to carefully evaluate the specific requirements and constraints of your application before choosing the appropriate technique (such as performance, complexity, flexibility, scalability...).
@@ -344,6 +483,28 @@ Each method of event handling/processing has its own advantages and disadvantage
 
 - Support Unix/Linux only
 - Not yet support pause/resume mechanism
+
+### File descriptor Events
+
+**Pros:**
+
+- Efficient monitoring of multiple file descriptors using `poll()`
+- Thread-safe with mutex protection for concurrent access
+- Dynamic FD management (add/remove/enable/disable at runtime)
+- Flexible callback system with user data support
+- Cross-platform on Unix-like systems (Linux, BSD, macOS)
+- Clean and intuitive API with named FDs for debugging
+- Lazy rebuild pattern for efficient event array updates
+
+**Cons:**
+
+- Not scalable for thousands of FDs (O(n) complexity, use `epoll`/`kqueue` for high-performance)
+- Unix-only, no Windows support
+- Level-triggered only (no edge-triggered mode)
+- Callbacks executed while holding mutex (potential contention)
+- No per-FD timeout or priority handling
+- Requires manual event loop (no built-in dispatcher thread)
+- FD lifecycle managed externally (library doesn't own/close FDs)
 
 ## Benchmark
 

@@ -49,9 +49,13 @@
 #include <utility>
 #include <algorithm>
 #include <vector>
+#include <string>
+#include <cstring>
 #include <set>
 #include <list>
 #include <queue>
+#include <sstream>
+#include <map>
 #include <unordered_map>
 #include <unordered_set>
 #include <functional>
@@ -65,6 +69,8 @@
 #include <memory>
 #include <ctime>
 #include <stdexcept>
+#include <errno.h>
+#include <sys/poll.h>
 
 #if (defined(__cplusplus) && __cplusplus >= 202002L) || (defined(_MSVC_LANG) && _MSVC_LANG >= 202002L)
     #define LIB_EVENT_CPP_20
@@ -782,7 +788,7 @@ namespace time_event
 
             m_repeat_count = repeat_count;
             m_repeat_counter = 0;
-            
+
             struct sigevent sev{};
             sev.sigev_notify = SIGEV_THREAD;
             sev.sigev_notify_function = timer_timeout_handler;
@@ -799,7 +805,7 @@ namespace time_event
              * If it_value is:
              * Non-zero → the timer starts ticking immediately and will fire after this duration.
              * Zero → the timer is disarmed (i.e., it won't start).
-             * 
+             *
              * it_interval defines the interval between subsequent expirations.
              * If it_interval is:
              * Zero → the timer is one-shot (fires once).
@@ -927,7 +933,7 @@ namespace time_event
                 func();
             }
         }
-    
+
     private:
         timer_t m_timer_id;
         mutable std::mutex m_mutex;
@@ -985,5 +991,410 @@ namespace once_event
         std::once_flag m_flag;
     };
 } // namespace once_event
+
+namespace fd_event
+{
+    /**
+     * @brief Event types for file descriptor monitoring
+     */
+    enum class event_type
+    {
+        READ = POLLIN,              // Data available to read
+        WRITE = POLLOUT,            // Ready for writing
+        ERROR = POLLERR,            // Error condition
+        HANGUP = POLLHUP,           // Hang up
+        INVALID = POLLNVAL,         // Invalid request
+        PRIORITY = POLLPRI,         // Priority data available
+        READ_WRITE = POLLIN | POLLOUT  // Both read and write
+    };
+
+    /**
+     * @brief Event callback function signature
+     * Parameters: fd (int), revents (short), user_data (void*)
+     */
+    using event_callback = std::function<void(int, short, void*)>;
+
+    /**
+     * @brief Structure to hold file descriptor information
+     */
+    struct fd_info
+    {
+        int fd;
+        short events;              // Events to monitor (POLLIN, POLLOUT, etc.)
+        event_callback callback;   // Callback function when event occurs
+        void* user_data;          // User-defined data passed to callback
+        std::string name;         // Descriptive name for logging
+        bool enabled;             // Whether this FD is currently enabled
+
+        fd_info() : fd(-1), events(0), callback(nullptr), user_data(nullptr), name(""), enabled(true) {}
+
+        fd_info(int fd_, short events_, event_callback cb, void* data = nullptr, const std::string& name_ = "")
+            : fd(fd_), events(events_), callback(cb), user_data(data), name(name_), enabled(true) {}
+    };
+
+    /**
+     * @brief File Descriptor Event Manager
+     *
+     * This class manages multiple file descriptors and their associated events.
+     * It uses poll() to monitor multiple FDs efficiently.
+     */
+    class fd_event_manager
+    {
+    public:
+        fd_event_manager() : modified_(false) {}
+        ~fd_event_manager() { clear(); }
+
+        /**
+         * @brief Add a file descriptor to monitor
+         * @param fd File descriptor
+         * @param events Events to monitor (event_type or combination)
+         * @param callback Function to call when event occurs
+         * @param user_data Optional user data passed to callback
+         * @param name Optional descriptive name for logging
+         * @return true if added successfully, false otherwise
+         */
+        bool add_fd(int fd, short events, event_callback callback,
+                    void* user_data = nullptr, const std::string& name = "")
+        {
+            if (fd < 0)
+            {
+                log_error("Invalid file descriptor: " + std::to_string(fd));
+                return false;
+            }
+
+            if (!callback)
+            {
+                log_error("Null callback for fd: " + std::to_string(fd));
+                return false;
+            }
+
+            std::lock_guard<std::mutex> lock(mutex_);
+
+            // Check if fd already exists
+            if (fd_map_.find(fd) != fd_map_.end())
+            {
+                log_error("File descriptor already registered: " + std::to_string(fd));
+                return false;
+            }
+
+            // Add to map
+            fd_info info(fd, events, callback, user_data, name);
+            fd_map_[fd] = info;
+            modified_ = true;
+
+            return true;
+        }
+
+        /**
+         * @brief Remove a file descriptor from monitoring
+         * @param fd File descriptor to remove
+         * @return true if removed successfully, false if not found
+         */
+        bool remove_fd(int fd)
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+
+            auto it = fd_map_.find(fd);
+            if (it == fd_map_.end())
+            {
+                log_error("File descriptor not found: " + std::to_string(fd));
+                return false;
+            }
+
+            fd_map_.erase(it);
+            modified_ = true;
+
+            return true;
+        }
+
+        /**
+         * @brief Enable monitoring for a specific file descriptor
+         * @param fd File descriptor to enable
+         * @return true if enabled successfully, false if not found
+         */
+        bool enable_fd(int fd)
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+
+            auto it = fd_map_.find(fd);
+            if (it == fd_map_.end())
+            {
+                log_error("File descriptor not found: " + std::to_string(fd));
+                return false;
+            }
+
+            if (!it->second.enabled)
+            {
+                it->second.enabled = true;
+                modified_ = true;
+            }
+
+            return true;
+        }
+
+        /**
+         * @brief Disable monitoring for a specific file descriptor (without removing it)
+         * @param fd File descriptor to disable
+         * @return true if disabled successfully, false if not found
+         */
+        bool disable_fd(int fd)
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+
+            auto it = fd_map_.find(fd);
+            if (it == fd_map_.end())
+            {
+                log_error("File descriptor not found: " + std::to_string(fd));
+                return false;
+            }
+
+            if (it->second.enabled)
+            {
+                it->second.enabled = false;
+                modified_ = true;
+            }
+
+            return true;
+        }
+
+        /**
+         * @brief Modify events to monitor for a specific file descriptor
+         * @param fd File descriptor
+         * @param events New events to monitor
+         * @return true if modified successfully, false if not found
+         */
+        bool modify_events(int fd, short events)
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+
+            auto it = fd_map_.find(fd);
+            if (it == fd_map_.end())
+            {
+                log_error("File descriptor not found: " + std::to_string(fd));
+                return false;
+            }
+
+            it->second.events = events;
+            modified_ = true;
+
+            return true;
+        }
+
+        /**
+         * @brief Wait for events on registered file descriptors
+         * @param timeout_ms Timeout in milliseconds (-1 for infinite)
+         * @return Number of file descriptors with events, 0 on timeout, -1 on error
+         */
+        int wait(int timeout_ms = -1)
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+
+            // Rebuild poll_fds_ if modified
+            if (modified_)
+            {
+                rebuild_poll_fds();
+                modified_ = false;
+            }
+
+            if (poll_fds_.empty())
+            {
+                // No file descriptors to monitor
+                return 0;
+            }
+
+            // Call poll
+            int ret = poll(poll_fds_.data(), poll_fds_.size(), timeout_ms);
+
+            if (ret < 0)
+            {
+                std::ostringstream oss;
+                oss << "poll() failed: " << strerror(errno) << " (errno: " << errno << ")";
+                log_error(oss.str());
+                return -1;
+            }
+
+            return ret;
+        }
+
+        /**
+         * @brief Process events and invoke callbacks
+         * Should be called after wait() returns > 0
+         */
+        void process_events()
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+
+            for (size_t i = 0; i < poll_fds_.size(); ++i)
+            {
+                if (poll_fds_[i].revents != 0)
+                {
+                    int fd = poll_fd_map_[i];
+                    auto it = fd_map_.find(fd);
+
+                    if (it != fd_map_.end() && it->second.callback)
+                    {
+                        // Invoke callback with fd, revents, and user_data
+                        it->second.callback(fd, poll_fds_[i].revents, it->second.user_data);
+                    }
+
+                    // Clear revents for next iteration
+                    poll_fds_[i].revents = 0;
+                }
+            }
+        }
+
+        /**
+         * @brief Combined wait and process
+         * @param timeout_ms Timeout in milliseconds
+         * @return Number of events processed
+         */
+        int wait_and_process(int timeout_ms = -1)
+        {
+            int ret = wait(timeout_ms);
+
+            if (ret > 0)
+            {
+                process_events();
+            }
+
+            return ret;
+        }
+
+        /**
+         * @brief Get the number of registered file descriptors
+         * @return Count of registered FDs
+         */
+        size_t get_fd_count() const
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            return fd_map_.size();
+        }
+
+        /**
+         * @brief Get the number of enabled file descriptors
+         * @return Count of enabled FDs
+         */
+        size_t get_enabled_fd_count() const
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+
+            size_t count = 0;
+            for (const auto& pair : fd_map_)
+            {
+                if (pair.second.enabled)
+                {
+                    ++count;
+                }
+            }
+
+            return count;
+        }
+
+        /**
+         * @brief Check if a file descriptor is registered
+         * @param fd File descriptor to check
+         * @return true if registered, false otherwise
+         */
+        bool has_fd(int fd) const
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            return fd_map_.find(fd) != fd_map_.end();
+        }
+
+        /**
+         * @brief Clear all registered file descriptors
+         */
+        void clear()
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            fd_map_.clear();
+            poll_fds_.clear();
+            poll_fd_map_.clear();
+            modified_ = false;
+        }
+
+        /**
+         * @brief Get last error message
+         * @return Error message string
+         */
+        std::string get_last_error() const
+        {
+            return last_error_;
+        }
+
+        /**
+         * @brief Set a global error handler callback
+         * @param handler Error handler function
+         */
+        void set_error_handler(std::function<void(const std::string&)> handler)
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            error_handler_ = handler;
+        }
+
+    private:
+        void rebuild_poll_fds()
+        {
+            poll_fds_.clear();
+            poll_fd_map_.clear();
+
+            for (const auto& pair : fd_map_)
+            {
+                if (pair.second.enabled)
+                {
+                    pollfd pfd;
+                    pfd.fd = pair.second.fd;
+                    pfd.events = pair.second.events;
+                    pfd.revents = 0;
+
+                    poll_fds_.push_back(pfd);
+                    poll_fd_map_.push_back(pair.first);
+                }
+            }
+        }
+
+        void log_error(const std::string& error)
+        {
+            last_error_ = error;
+
+            if (error_handler_)
+            {
+                error_handler_(error);
+            }
+        }
+
+        std::map<int, fd_info> fd_map_;              // Map of fd -> fd_info
+        std::vector<pollfd> poll_fds_;               // Array for poll()
+        std::vector<int> poll_fd_map_;               // Map poll_fds_ index to fd
+        mutable std::mutex mutex_;                   // Thread safety
+        bool modified_;                              // Track if fd_map_ changed
+        std::string last_error_;                     // Last error message
+        std::function<void(const std::string&)> error_handler_;  // Error callback
+    };
+
+    /**
+     * @brief Convert revents to human-readable string
+     */
+    inline std::string event_to_string(short revents)
+    {
+        std::ostringstream oss;
+        bool first = true;
+
+        auto append = [&](const char* name) {
+            if (!first) oss << "|";
+            oss << name;
+            first = false;
+        };
+
+        if (revents & POLLIN)    append("POLLIN");
+        if (revents & POLLOUT)   append("POLLOUT");
+        if (revents & POLLPRI)   append("POLLPRI");
+        if (revents & POLLERR)   append("POLLERR");
+        if (revents & POLLHUP)   append("POLLHUP");
+        if (revents & POLLNVAL)  append("POLLNVAL");
+
+        return oss.str();
+    }
+} // namespace fd_event
 
 #endif // LIB_FOR_EVENT_DRIVEN_PROGRAMMING
