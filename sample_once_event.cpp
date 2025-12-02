@@ -23,6 +23,11 @@ void demonstrate_once_event()
     DemoClass demo_instance;
     demo_instance.initialize();
     demo_instance.initialize(); // This call should not re-initialize
+
+    once_event::once_event global_once;
+    global_once.call_once([]() {
+        std::cout << "Global initialization done." << std::endl;
+    });
 }
 
 int main()

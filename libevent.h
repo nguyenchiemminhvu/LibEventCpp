@@ -961,14 +961,18 @@ namespace once_event
         once_event() = default;
         ~once_event() = default;
 
-        template <typename... Args>
-        void call_once(std::function<void(Args...)> func, Args... args)
+        // Overload for any callable (lambdas, functors, function objects)
+        template <typename Callable, typename... Args,
+                  typename = typename std::enable_if<
+                      !std::is_member_function_pointer<Callable>::value &&
+                      !std::is_same<typename std::decay<Callable>::type, std::function<void(Args...)>>::value
+                  >::type>
+        void call_once(Callable&& func, Args&&... args)
         {
-            std::call_once(m_flag, [=]() mutable {
-                func(std::forward<Args>(args)...);
-            });
+            std::call_once(m_flag, std::forward<Callable>(func), std::forward<Args>(args)...);
         }
 
+        // Overload for member functions
         template <typename Cls, typename... Args>
         void call_once(void (Cls::*member_func)(Args...), Cls* obj, Args... args)
         {
