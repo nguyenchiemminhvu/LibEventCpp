@@ -1397,4 +1397,293 @@ namespace fd_event
     }
 } // namespace fd_event
 
+namespace signal_event
+{
+    /**
+     * @brief Set up a signal handler for the specified signal number
+     * @param signum Signal number (e.g., SIGINT, SIGTERM)
+     * @param handler Function to handle the signal
+     * @return true on success, false on failure
+     */
+    inline bool set_signal_handler(int signum, void (*handler)(int))
+    {
+        struct sigaction sa;
+        sa.sa_handler = handler;
+        sigemptyset(&sa.sa_mask);
+        sa.sa_flags = 0;
+
+        if (sigaction(signum, &sa, nullptr) == -1)
+        {
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * @brief Set up a signal handler with extended information (siginfo_t)
+     * @param signum Signal number
+     * @param handler Function to handle the signal with extended info
+     * @param flags Additional flags (SA_RESTART, SA_NODEFER, etc.)
+     * @return true on success, false on failure
+     */
+    inline bool set_signal_handler_ex(int signum, void (*handler)(int, siginfo_t*, void*), int flags = SA_SIGINFO)
+    {
+        struct sigaction sa;
+        sa.sa_sigaction = handler;
+        sigemptyset(&sa.sa_mask);
+        sa.sa_flags = flags;
+
+        if (sigaction(signum, &sa, nullptr) == -1)
+        {
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * @brief Reset the signal handler for the specified signal number to default
+     * @param signum Signal number
+     * @return true on success, false on failure
+     */
+    inline bool reset_signal_handler(int signum)
+    {
+        struct sigaction sa;
+        sa.sa_handler = SIG_DFL;
+        sigemptyset(&sa.sa_mask);
+        sa.sa_flags = 0;
+        if (sigaction(signum, &sa, nullptr) == -1)
+        {
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * @brief Ignore a specific signal
+     * @param signum Signal number
+     * @return true on success, false on failure
+     */
+    inline bool ignore_signal(int signum)
+    {
+        struct sigaction sa;
+        sa.sa_handler = SIG_IGN;
+        sigemptyset(&sa.sa_mask);
+        sa.sa_flags = 0;
+        if (sigaction(signum, &sa, nullptr) == -1)
+        {
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * @brief Block a specific signal
+     * @param signum Signal number to block
+     * @return true on success, false on failure
+     */
+    inline bool block_signal(int signum)
+    {
+        sigset_t set;
+        sigemptyset(&set);
+        sigaddset(&set, signum);
+        if (sigprocmask(SIG_BLOCK, &set, nullptr) == -1)
+        {
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * @brief Unblock a specific signal
+     * @param signum Signal number to unblock
+     * @return true on success, false on failure
+     */
+    inline bool unblock_signal(int signum)
+    {
+        sigset_t set;
+        sigemptyset(&set);
+        sigaddset(&set, signum);
+        if (sigprocmask(SIG_UNBLOCK, &set, nullptr) == -1)
+        {
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * @brief Block multiple signals
+     * @param signals Vector of signal numbers to block
+     * @return true on success, false on failure
+     */
+    inline bool block_signals(const std::vector<int>& signals)
+    {
+        sigset_t set;
+        sigemptyset(&set);
+        for (int sig : signals)
+        {
+            sigaddset(&set, sig);
+        }
+        if (sigprocmask(SIG_BLOCK, &set, nullptr) == -1)
+        {
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * @brief Unblock multiple signals
+     * @param signals Vector of signal numbers to unblock
+     * @return true on success, false on failure
+     */
+    inline bool unblock_signals(const std::vector<int>& signals)
+    {
+        sigset_t set;
+        sigemptyset(&set);
+        for (int sig : signals)
+        {
+            sigaddset(&set, sig);
+        }
+        if (sigprocmask(SIG_UNBLOCK, &set, nullptr) == -1)
+        {
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * @brief Check if a signal is currently blocked
+     * @param signum Signal number to check
+     * @return true if blocked, false otherwise
+     */
+    inline bool is_signal_blocked(int signum)
+    {
+        sigset_t set;
+        if (sigprocmask(SIG_BLOCK, nullptr, &set) == -1)
+        {
+            return false;
+        }
+        return sigismember(&set, signum) == 1;
+    }
+
+    /**
+     * @brief Check if a signal is pending
+     * @param signum Signal number to check
+     * @return true if pending, false otherwise
+     */
+    inline bool is_signal_pending(int signum)
+    {
+        sigset_t set;
+        if (sigpending(&set) == -1)
+        {
+            return false;
+        }
+        return sigismember(&set, signum) == 1;
+    }
+
+    /**
+     * @brief Send a signal to the current process
+     * @param signum Signal number to send
+     * @return true on success, false on failure
+     */
+    inline bool raise_signal(int signum)
+    {
+        return raise(signum) == 0;
+    }
+
+    /**
+     * @brief Send a signal to a specific process
+     * @param pid Process ID
+     * @param signum Signal number to send
+     * @return true on success, false on failure
+     */
+    inline bool send_signal(pid_t pid, int signum)
+    {
+        return kill(pid, signum) == 0;
+    }
+
+    /**
+     * @brief Wait for any signal in the set
+     * @param signals Set of signals to wait for
+     * @param timeout_ms Timeout in milliseconds (-1 for infinite)
+     * @return Signal number received, or -1 on error/timeout
+     */
+    inline int wait_for_signal(const std::vector<int>& signals, int timeout_ms = -1)
+    {
+        sigset_t set;
+        sigemptyset(&set);
+        for (int sig : signals)
+        {
+            sigaddset(&set, sig);
+        }
+
+        if (timeout_ms < 0)
+        {
+            int sig;
+            if (sigwait(&set, &sig) == 0)
+            {
+                return sig;
+            }
+            return -1;
+        }
+        else
+        {
+            struct timespec timeout;
+            timeout.tv_sec = timeout_ms / 1000;
+            timeout.tv_nsec = (timeout_ms % 1000) * 1000000;
+
+            siginfo_t info;
+            int result = sigtimedwait(&set, &info, &timeout);
+            if (result > 0)
+            {
+                return result;
+            }
+            return -1;
+        }
+    }
+
+    /**
+     * @brief Get signal name as string
+     * @param signum Signal number
+     * @return Signal name string
+     */
+    inline std::string get_signal_name(int signum)
+    {
+        switch (signum)
+        {
+            case SIGHUP:    return "SIGHUP";
+            case SIGINT:    return "SIGINT";
+            case SIGQUIT:   return "SIGQUIT";
+            case SIGILL:    return "SIGILL";
+            case SIGTRAP:   return "SIGTRAP";
+            case SIGABRT:   return "SIGABRT";
+            case SIGBUS:    return "SIGBUS";
+            case SIGFPE:    return "SIGFPE";
+            case SIGKILL:   return "SIGKILL";
+            case SIGUSR1:   return "SIGUSR1";
+            case SIGSEGV:   return "SIGSEGV";
+            case SIGUSR2:   return "SIGUSR2";
+            case SIGPIPE:   return "SIGPIPE";
+            case SIGALRM:   return "SIGALRM";
+            case SIGTERM:   return "SIGTERM";
+            case SIGCHLD:   return "SIGCHLD";
+            case SIGCONT:   return "SIGCONT";
+            case SIGSTOP:   return "SIGSTOP";
+            case SIGTSTP:   return "SIGTSTP";
+            case SIGTTIN:   return "SIGTTIN";
+            case SIGTTOU:   return "SIGTTOU";
+            case SIGURG:    return "SIGURG";
+            case SIGXCPU:   return "SIGXCPU";
+            case SIGXFSZ:   return "SIGXFSZ";
+            case SIGVTALRM: return "SIGVTALRM";
+            case SIGPROF:   return "SIGPROF";
+            case SIGWINCH:  return "SIGWINCH";
+            case SIGIO:     return "SIGIO";
+            case SIGPWR:    return "SIGPWR";
+            case SIGSYS:    return "SIGSYS";
+            default:
+                return "UNKNOWN_" + std::to_string(signum);
+        }
+    }
+} // namespace signal_event
+
 #endif // LIB_FOR_EVENT_DRIVEN_PROGRAMMING
