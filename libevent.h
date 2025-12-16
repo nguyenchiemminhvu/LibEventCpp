@@ -992,6 +992,240 @@ namespace once_event
     };
 } // namespace once_event
 
+namespace toggle_event
+{
+    /**
+     * @brief Toggle event that triggers callback only once when condition becomes true,
+     * and resets when condition becomes false.
+     *
+     * Usage pattern:
+     * if (precondition) {
+     *     toggle.trigger_if_not_set(callback, args...);
+     * } else {
+     *     toggle.reset(); // Reset for next trigger
+     * }
+     */
+    class toggle_event
+    {
+    public:
+        toggle_event()
+            : m_triggered(false)
+        {
+        }
+
+        ~toggle_event() = default;
+
+        /**
+         * @brief Check if toggle has been triggered
+         */
+        bool is_triggered() const
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            return m_triggered;
+        }
+
+        /**
+         * @brief Reset the toggle state to allow future triggers
+         */
+        void reset()
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_triggered = false;
+            m_cond_var.notify_all();
+        }
+
+        /**
+         * @brief Force set the toggle state without calling callback
+         */
+        void set()
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_triggered = true;
+            m_cond_var.notify_all();
+        }
+
+        /**
+         * @brief Trigger callback if not already triggered
+         * Overload for any callable (lambdas, functors, function objects)
+         */
+        template <typename Callable, typename... Args,
+                  typename = typename std::enable_if<
+                      !std::is_member_function_pointer<Callable>::value &&
+                      !std::is_same<typename std::decay<Callable>::type, std::function<void(Args...)>>::value
+                  >::type>
+        bool trigger_if_not_set(Callable&& func, Args&&... args)
+        {
+            bool ret = false;
+            std::lock_guard<std::mutex> lock(m_mutex);
+            if (!m_triggered)
+            {
+                func(std::forward<Args>(args)...);
+                m_triggered = true;
+                ret = true;
+            }
+            m_cond_var.notify_all();
+            return ret;
+        }
+
+        /**
+         * @brief Trigger callback if not already triggered
+         * Overload for member functions
+         */
+        template <typename Cls, typename... Args>
+        bool trigger_if_not_set(void (Cls::*member_func)(Args...), Cls* obj, Args... args)
+        {
+            bool ret = false;
+            std::lock_guard<std::mutex> lock(m_mutex);
+            if (!m_triggered)
+            {
+                (obj->*member_func)(std::forward<Args>(args)...);
+                m_triggered = true;
+                ret = true;
+            }
+            m_cond_var.notify_all();
+            return ret;
+        }
+
+        /**
+         * @brief Trigger callback if not already triggered
+         * Overload for std::function
+         */
+        template <typename... Args>
+        bool trigger_if_not_set(std::function<void(Args...)> func, Args... args)
+        {
+            bool ret = false;
+            std::lock_guard<std::mutex> lock(m_mutex);
+            if (!m_triggered)
+            {
+                func(std::forward<Args>(args)...);
+                m_triggered = true;
+                ret = true;
+            }
+            m_cond_var.notify_all();
+            return ret;
+        }
+
+        /**
+         * @brief Wait until toggle is triggered (blocking)
+         */
+        void wait()
+        {
+            std::unique_lock<std::mutex> lock(m_mutex);
+            m_cond_var.wait(lock, [this]() { return m_triggered; });
+        }
+
+        /**
+         * @brief Wait with timeout until toggle is triggered
+         * @return true if triggered, false if timeout
+         */
+        bool wait_for(uint32_t timeout_ms)
+        {
+            std::unique_lock<std::mutex> lock(m_mutex);
+            return m_cond_var.wait_for(lock, std::chrono::milliseconds(timeout_ms), [this]() { return m_triggered; });
+        }
+
+        /**
+         * @brief Wait until triggered, then execute callback
+         * Overload for any callable (lambdas, functors, function objects)
+         */
+        template <typename Callable, typename... Args,
+                  typename = typename std::enable_if<
+                      !std::is_member_function_pointer<Callable>::value &&
+                      !std::is_same<typename std::decay<Callable>::type, std::function<void(Args...)>>::value
+                  >::type>
+        void wait_then(Callable&& func, Args&&... args)
+        {
+            std::unique_lock<std::mutex> lock(m_mutex);
+            m_cond_var.wait(lock, [this]() { return m_triggered; });
+            func(std::forward<Args>(args)...);
+        }
+
+        /**
+         * @brief Wait until triggered, then execute callback
+         * Overload for member functions
+         */
+        template <typename Cls, typename... Args>
+        void wait_then(void (Cls::*member_func)(Args...), Cls* obj, Args... args)
+        {
+            std::unique_lock<std::mutex> lock(m_mutex);
+            m_cond_var.wait(lock, [this]() { return m_triggered; });
+            (obj->*member_func)(std::forward<Args>(args)...);
+        }
+
+        /**
+         * @brief Wait until triggered, then execute callback
+         * Overload for std::function
+         */
+        template <typename... Args>
+        void wait_then(std::function<void(Args...)> func, Args... args)
+        {
+            std::unique_lock<std::mutex> lock(m_mutex);
+            m_cond_var.wait(lock, [this]() { return m_triggered; });
+            func(std::forward<Args>(args)...);
+        }
+
+        /**
+         * @brief Wait with timeout, then execute callback if triggered
+         * Overload for any callable (lambdas, functors, function objects)
+         * @return true if triggered and callback executed, false if timeout
+         */
+        template <typename Callable, typename... Args,
+                  typename = typename std::enable_if<
+                      !std::is_member_function_pointer<Callable>::value &&
+                      !std::is_same<typename std::decay<Callable>::type, std::function<void(Args...)>>::value
+                  >::type>
+        bool wait_for_then(uint32_t timeout_ms, Callable&& func, Args&&... args)
+        {
+            std::unique_lock<std::mutex> lock(m_mutex);
+            bool triggered = m_cond_var.wait_for(lock, std::chrono::milliseconds(timeout_ms), [this]() { return m_triggered; });
+            if (triggered)
+            {
+                func(std::forward<Args>(args)...);
+            }
+            return triggered;
+        }
+
+        /**
+         * @brief Wait with timeout, then execute callback if triggered
+         * Overload for member functions
+         * @return true if triggered and callback executed, false if timeout
+         */
+        template <typename Cls, typename... Args>
+        bool wait_for_then(uint32_t timeout_ms, void (Cls::*member_func)(Args...), Cls* obj, Args... args)
+        {
+            std::unique_lock<std::mutex> lock(m_mutex);
+            bool triggered = m_cond_var.wait_for(lock, std::chrono::milliseconds(timeout_ms), [this]() { return m_triggered; });
+            if (triggered)
+            {
+                (obj->*member_func)(std::forward<Args>(args)...);
+            }
+            return triggered;
+        }
+
+        /**
+         * @brief Wait with timeout, then execute callback if triggered
+         * Overload for std::function
+         * @return true if triggered and callback executed, false if timeout
+         */
+        template <typename... Args>
+        bool wait_for_then(uint32_t timeout_ms, std::function<void(Args...)> func, Args... args)
+        {
+            std::unique_lock<std::mutex> lock(m_mutex);
+            bool triggered = m_cond_var.wait_for(lock, std::chrono::milliseconds(timeout_ms), [this]() { return m_triggered; });
+            if (triggered)
+            {
+                func(std::forward<Args>(args)...);
+            }
+            return triggered;
+        }
+
+    private:
+        mutable std::mutex m_mutex;
+        bool m_triggered;
+        std::condition_variable m_cond_var;
+    };
+} // namespace toggle_event
+
 namespace fd_event
 {
     /**
